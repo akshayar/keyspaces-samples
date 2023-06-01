@@ -1,0 +1,133 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create a VPC with private subnets
+Parameters:
+  VPCCidr:
+    Type: String
+    Description: Cidr block of the VPC
+  PeerVPCCidr:
+    Default: NONE
+    Type: String
+    Description: Cidr block of the peer VPC
+  IfCreateS3Endpoint:
+    Default: true
+    Type: String
+    Description: Create S3 Endpoint or not
+  IfCreateSTSEndpoint:
+    Default: true
+    Type: String
+    Description: Create STS Endpoint or not
+  IfCreateKeySpacesEndpoint:
+    Default: true
+    Type: String
+    Description: Create KeySpaces Endpoint or not
+  VPCId:
+    Type: String
+    Description: VPC Id
+  PrivateSubnetMSKOne:
+    Type: String
+    Description: Private Subnet Id
+  PrivateSubnetMSKTwo:
+    Type: String
+    Description: Private Subnet Id
+  PrivateSubnetMSKThree:
+    Type: String
+    Description: Private Subnet Id
+Conditions:
+  CreateS3Endpoint: !Equals [!Ref IfCreateS3Endpoint, 'true']
+  CreateSTSEndpoint: !Equals [!Ref IfCreateSTSEndpoint, 'true']
+  CreateKeySpacesEndpoint: !Equals [!Ref IfCreateKeySpacesEndpoint, 'true']
+Resources:
+  S3GatewayEndpoint:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Condition: CreateS3Endpoint
+    Properties:
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      VpcId: !Ref VPC
+      VpcEndpointType: Gateway
+  STSGatewayEndpoint:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Condition: CreateSTSEndpoint
+    Properties:
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.sts'
+      VpcId: !Ref VPC
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+        - !Ref STSSecurityGroup
+      SubnetIds:
+        - !Ref PrivateSubnetMSKOne
+        - !Ref PrivateSubnetMSKTwo
+        - !Ref PrivateSubnetMSKThree
+  STSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreateSTSEndpoint
+    Properties:
+      GroupDescription: Security Group for STS VPC Endpoint
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref VPCCidr
+  KeySpacesGatewayEndpoint:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Condition: CreateKeySpacesEndpoint
+    Properties:
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.cassandra'
+      VpcId: !Ref VPC
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+        - !Ref KeySpacesSecurityGroup
+      SubnetIds:
+        - !Ref PrivateSubnetMSKOne
+        - !Ref PrivateSubnetMSKTwo
+        - !Ref PrivateSubnetMSKThree
+  KeySpacesSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreateKeySpacesEndpoint
+    Properties:
+      GroupDescription: Security Group for KeySpaces VPC Endpoint
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 9142
+          ToPort: 9142
+          CidrIp: !Ref PeerVPCCidr
+        - IpProtocol: tcp
+          FromPort: 9142
+          ToPort: 9142
+          CidrIp: !Ref VPCCidr
+  emrCluster:
+    Type: 'AWS::EMR::Cluster'
+    Properties:
+      Name: "spark-emr-cluster"
+      ReleaseLabel: !Ref emrReleaseLabel
+      Applications:
+        - Name: Spark
+        - Name: Hive
+        - Name: Livy
+      Instances:
+        MasterInstanceGroup:
+          InstanceCount: 1
+          InstanceType: m5.xlarge
+          Market: ON_DEMAND
+          Name: Master
+        CoreInstanceGroup:
+          InstanceCount: 2
+          InstanceType: m5.xlarge
+          Market: ON_DEMAND
+          Name: Core
+        Ec2SubnetId: !GetAtt VPC.Outputs.PrivateSubnetOne
+      JobFlowRole: !Ref emrInstanceProfile
+      ServiceRole: EMR_DefaultRole
+      VisibleToAllUsers: true
+      Tags:
+        - Key: name
+          Value: "spark-emr-cluster"
+        - Key: stack
+          Value: !Ref AWS::StackName
+
+

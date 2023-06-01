@@ -1,0 +1,151 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create resoureces in spark account
+Parameters:
+  VPCCidr:
+    Default: 10.2.0.0/16
+    AllowedValues:
+      - 10.0.0.0/16
+      - 10.1.0.0/16
+      - 10.2.0.0/16
+      - 10.3.0.0/16
+      - 10.4.0.0/16
+    Type: String
+    Description: Cidr block of the VPC to be created
+  VPCStackTemplateUrl:
+    Type: String
+    Description: The S3 URL of the VPC stack template
+  keySpacesCrossAccountRoleArn:
+    Type: String
+    Description: The ARN of the role in the keyspaces account
+  emrReleaseLabel:
+    Default: emr-6.10.0
+    Type: String
+    Description: The EMR release label
+Resources:
+  VPC:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref VPCStackTemplateUrl
+      Parameters:
+        VPCName: "spark-vpc"
+        VPCCidr: !Ref VPCCidr
+        PeerVPCCidr: "NA"
+        IfCreatePublicSubnet: "true"
+        IfCreateS3Endpoint: "true"
+        IfCreateSTSEndpoint: "true"
+        IfCreateKeySpacesEndpoint: "false"
+  sparkAccountBastionCloud9:
+    Type: AWS::Cloud9::EnvironmentEC2
+    Properties:
+      InstanceType: t3.small
+      Description: Cloud9 instance for spark account bastion node
+      SubnetId: !GetAtt VPC.Outputs.PublicSubnetOne
+      AutomaticStopTimeMinutes: 30
+      ConnectionType: CONNECT_SSM
+
+  crossAccountKeySpacesPolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      Description: 'Allow access to keyspaces in cross account'
+      Path: /
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: 'sts:AssumeRole'
+            Resource: !Ref keySpacesCrossAccountRoleArn
+  emrAddStepPolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+        Description: 'Allow access to add step to EMR'
+        Path: /
+        PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+            - Effect: Allow
+              Action:
+                - 'elasticmapreduce:AddJobFlowSteps'
+                - 'elasticmapreduce:DescribeCluster'
+              Resource: '*'
+  emrS3Policy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      Description: 'Allow access to S3 '
+      Path: /
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - "s3:AbortMultipartUpload"
+              - "s3:CreateBucket"
+              - "s3:DeleteObject"
+              - "s3:GetBucketVersioning"
+              - "s3:GetObject"
+              - "s3:GetObjectTagging"
+              - "s3:GetObjectVersion"
+              - "s3:ListBucket"
+              - "s3:ListBucketMultipartUploads"
+              - "s3:ListBucketVersions"
+              - "s3:ListMultipartUploadParts"
+              - "s3:PutBucketVersioning"
+              - "s3:PutObject"
+              - "s3:PutObjectTagging"
+            Resource:
+                - "arn:aws:s3:::*"
+                - "arn:aws:s3:::*/*"
+  emrIamRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - !Ref crossAccountKeySpacesPolicy
+        - !Ref emrAddStepPolicy
+        - !Ref emrS3Policy
+  emrInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: /
+      Roles:
+        - !Ref emrIamRole
+Outputs:
+  cloud9Instance:
+    Description: The cloud9 instance
+    Value: !Ref sparkAccountBastionCloud9
+  emrIamRoleName:
+    Description: The EMR IAM role
+    Value: !Ref emrIamRole
+  emrInstanceProfileName:
+    Description: The EMR instance profile
+    Value: !Ref emrInstanceProfile
+  emrIamRoleArn:
+    Description: The EMR IAM role ARN
+    Value: !GetAtt emrIamRole.Arn
+  VPCId:
+    Description: The VPC Id
+    Value: !GetAtt VPC.Outputs.VPCId
+  PrivateRouteTableId:
+    Description: The private route table Id
+    Value: !GetAtt VPC.Outputs.PrivateRouteTableId
+  PublicRouteTableId:
+    Description: The public route table Id
+    Value: !GetAtt VPC.Outputs.PublicRouteTableId
+  PrivateSubnetOne:
+    Description: The private subnet one
+    Value: !GetAtt VPC.Outputs.PrivateSubnetOne
+
+
+
+
+
+
+

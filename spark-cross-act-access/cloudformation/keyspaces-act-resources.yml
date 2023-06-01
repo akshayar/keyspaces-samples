@@ -1,0 +1,94 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create resoureces in KeySpaces account
+Parameters:
+  VPCCidr:
+    Default: 10.0.0.0/16
+    Type: String
+    Description: Cidr block of the VPC to be created
+  PeerVPCCidr:
+    Default: NONE
+    Type: String
+    Description: Cidr block of the VPC to be peered
+  VPCStackTemplateUrl:
+    Type: String
+    Description: The S3 URL of the VPC stack template
+  KeyspaceName:
+    Default: "catalog"
+    Type: String
+    Description: Name of the Keyspace to be created
+
+Resources:
+  VPC:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref VPCStackTemplateUrl
+      Parameters:
+        VPCName: "keyspaces-vpc"
+        VPCCidr: !Ref VPCCidr
+        PeerVPCCidr: !Ref PeerVPCCidr
+        IfCreatePublicSubnet: "false"
+        IfCreateS3Endpoint: "false"
+        IfCreateSTSEndpoint: "false"
+        IfCreateKeySpacesEndpoint: "true"
+  MyNewKeyspace:
+    Type: AWS::Cassandra::Keyspace
+    Properties:
+      KeyspaceName: !Ref KeyspaceName
+      Tags:
+        - Key: name
+          Value: !Ref KeyspaceName
+        - Key: stack
+          Value: !Ref AWS::StackName
+  KeySpacesEndPointPermissionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: 'Allow access Keyspaces endpoint'
+      Path: /
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: Allow
+          Action:
+            - 'ec2:DescribeNetworkInterfaces'
+            - 'ec2:DescribeVpcEndpoints'
+          Resource: '*'
+  KeySpacesAccountRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonKeyspacesFullAccess
+        - !Ref KeySpacesEndPointPermissionPolicy
+Outputs:
+  MyNewKeyspace:
+    Description: The name of the Keyspace
+    Value: !Ref MyNewKeyspace
+    Export:
+      Name: !Sub "${AWS::StackName}-MyNewKeyspace"
+  KeySpacesAccountRoleName:
+    Description: The Name of the role in the keyspaces account
+    Value: !Ref KeySpacesAccountRole
+  KeySpacesAccountRoleArn:
+    Description: The ARN of the role in the keyspaces account
+    Value: !GetAtt KeySpacesAccountRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-KeySpacesAccountRole"
+  createPeeringConnectionCommand:
+    Description: The schema creation command
+    Value: !Sub "aws ec2 create-vpc-peering-connection --vpc-id SPARK_VPC_ID --peer-vpc-id ${VPC.Outputs.VPCId} --peer-owner-id ${AWS::AccountId}"
+  describePeeringConnectionCommand:
+    Description: The schema creation command
+    Value: !Sub "aws ec2 describe-vpc-peering-connections --filters Name=accepter-vpc-info.vpc-id,Values=${VPC.Outputs.VPCId}"
+  PrivateRouteTableId:
+    Description: The private route table id
+    Value: !GetAtt VPC.Outputs.PrivateRouteTableId
+  KeySpacesEndpointDns:
+    Description: The Keyspaces endpoint DNS
+    Value: !GetAtt VPC.Outputs.KeySpacesEndpointDns

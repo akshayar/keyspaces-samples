@@ -1,0 +1,86 @@
+aws ec2 create-vpc-peering-connection --vpc-id vpc-0cb9f6c07ea1359ce --peer-vpc-id vpc-08c58362f34d1f219 --peer-owner-id 967781231549
+
+
+aws ec2 describe-vpc-peering-connections --filters Name=accepter-vpc-info.vpc-id,Values=vpc-08c58362f34d1f219
+
+
+cat << EOF > application-keyspaces.conf
+datastax-java-driver {
+        basic.contact-points = ["10.3.2.169:9142","10.3.1.189:9142","10.3.3.198:9142"]
+        basic.load-balancing-policy {
+            class = DefaultLoadBalancingPolicy
+            local-datacenter = ap-south-1
+            slow-replica-avoidance = false
+        }
+        basic.request {
+              consistency = LOCAL_QUORUM
+        }
+        advanced {
+                auth-provider = {
+                   class = software.aws.mcs.auth.SigV4AuthProvider
+                   aws-region = ap-south-1
+                   aws-role-arn = "arn:aws:iam::967781231549:role/keyspaces-cluster-KeySpacesAccountRole-1L8EJCK54M1BU"
+                 }
+            ssl-engine-factory {
+                class = DefaultSslEngineFactory
+                truststore-path = "/home/hadoop/cassandra_truststore.jks"
+                truststore-password = "storepassword"
+                hostname-validation=false
+            }
+        }
+        advanced.connection.pool.local.size = 3
+}
+EOF
+
+
+aws emr create-cluster \
+ --name "keyspaces-6.10" \
+ --log-uri "s3n://${BUCKET_PATH}/emrlogs/" \
+ --release-label "emr-6.10.0" \
+ --service-role "${EMR_ROLE_ARN}" \
+ --ec2-attributes '{"InstanceProfile":"spark-cluster-emrInstanceProfile-P7ot7Z70cXwq","KeyName":"emr-keyspaces","SubnetId":"subnet-09b741b860b766eb3"}' \
+ --tags 'for-use-with-amazon-emr-managed-policies=true' \
+ --applications Name=Spark Name=Zeppelin \
+ --instance-groups '[{"InstanceCount":1,"InstanceGroupType":"TASK","Name":"Task - 1","InstanceType":"m5.2xlarge","EbsConfiguration":{"EbsBlockDeviceConfigs":[{"VolumeSpecification":{"VolumeType":"gp2","SizeInGB":32},"VolumesPerInstance":2}],"EbsOptimized":true}},{"InstanceCount":1,"InstanceGroupType":"CORE","Name":"Core","InstanceType":"m5.2xlarge","EbsConfiguration":{"EbsBlockDeviceConfigs":[{"VolumeSpecification":{"VolumeType":"gp2","SizeInGB":32},"VolumesPerInstance":2}],"EbsOptimized":true}},{"InstanceCount":1,"InstanceGroupType":"MASTER","Name":"Primary","InstanceType":"m5.xlarge","EbsConfiguration":{"EbsBlockDeviceConfigs":[{"VolumeSpecification":{"VolumeType":"gp2","SizeInGB":32},"VolumesPerInstance":2}]}}]' \
+ --bootstrap-actions '[{"Args":[],"Name":"get-ap-conf","Path":"s3://aksh-code-binaries/keyspaces-blog/bootstrap.sh"}]' \
+ --region "${REGION}"
+
+
+
+ssh -i emr-keyspaces.pem hadoop@ip-10-4-1-56.ap-south-1.compute.internal
+
+
+export BUCKET_PATH=aksh-code-binaries/keyspaces-blog
+
+spark-submit --verbose  \
+    --conf spark.cassandra.connection.config.profile.path=file:///home/hadoop/application-keyspaces.conf     \
+    --jars s3://${BUCKET_PATH}/aws-sigv4-auth-cassandra-java-driver-plugin-4.0.10-shaded.jar,s3://${BUCKET_PATH}/spark-cassandra-connector-assembly_2.12-3.3.0.jar      \
+    s3://${BUCKET_PATH}/keyspaces-sample.py KEYSPACE_NAME book_awards s3://${BUCKET_PATH}/keyspaces_sample_table.csv
+
+
+
+datastax-java-driver {
+        basic.contact-points = ["vpce-0db379aec09c83516-uhkkph7x.cassandra.ap-south-1.vpce.amazonaws.com:9142"]
+        basic.load-balancing-policy {
+            class = DefaultLoadBalancingPolicy
+            local-datacenter = ap-south-1
+            slow-replica-avoidance = false
+        }
+        basic.request {
+              consistency = LOCAL_QUORUM
+        }
+        advanced {
+                auth-provider = {
+                   class = software.aws.mcs.auth.SigV4AuthProvider
+                   aws-region = ap-south-1
+                   aws-role-arn = "arn:aws:iam::967781231549:role/keyspaces-cluster-KeySpacesAccountRole-1L8EJCK54M1BU"
+                 }
+            ssl-engine-factory {
+                class = DefaultSslEngineFactory
+                truststore-path = "/home/hadoop/cassandra_truststore.jks"
+                truststore-password = "storepassword"
+                hostname-validation=false
+            }
+        }
+        advanced.connection.pool.local.size = 3
+}

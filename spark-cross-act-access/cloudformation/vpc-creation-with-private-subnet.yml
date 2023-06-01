@@ -1,0 +1,267 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create a VPC with private subnets
+Parameters:
+  VPCName:
+    Type: String
+    Description: Name of the VPC to be created
+  VPCCidr:
+    Default: 10.0.0.0/16
+    Type: String
+    Description: Cidr block of the VPC to be created
+  PeerVPCCidr:
+    Type: String
+    Description: Cidr block of the VPC to be peered
+  IfCreatePublicSubnet:
+    Default: true
+    Type: String
+    Description: Create Public Subnet or not
+  IfCreateS3Endpoint:
+    Default: true
+    Type: String
+    Description: Create S3 Endpoint or not
+  IfCreateSTSEndpoint:
+    Default: true
+    Type: String
+    Description: Create STS Endpoint or not
+  IfCreateKeySpacesEndpoint:
+    Default: true
+    Type: String
+    Description: Create KeySpaces Endpoint or not
+Conditions:
+  CreateS3Endpoint: !Equals [!Ref IfCreateS3Endpoint, 'true']
+  CreateSTSEndpoint: !Equals [!Ref IfCreateSTSEndpoint, 'true']
+  CreateKeySpacesEndpoint: !Equals [!Ref IfCreateKeySpacesEndpoint, 'true']
+  CreatePublicSubnet: !Equals [!Ref IfCreatePublicSubnet, 'true']
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      CidrBlock: !Ref VPCCidr
+      Tags:
+        - Key: 'Name'
+          Value: !Ref VPCName
+
+  PublicSubnetOne:
+    Type: AWS::EC2::Subnet
+    Condition: CreatePublicSubnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: {Ref: 'AWS::Region'}
+      VpcId: !Ref 'VPC'
+      CidrBlock: !Select [ 0, !Cidr [ !Ref VPCCidr, 4, 8 ]]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: 'Name'
+          Value: 'PublicSubnet'
+  PrivateSubnetOne:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: {Ref: 'AWS::Region'}
+      VpcId: !Ref 'VPC'
+      CidrBlock: !Select [ 1, !Cidr [ !Ref VPCCidr, 4, 8 ]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: 'Name'
+          Value: 'PrivateSubnetOne'
+  PrivateSubnetTwo:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: {Ref: 'AWS::Region'}
+      VpcId: !Ref 'VPC'
+      CidrBlock: !Select [ 2, !Cidr [ !Ref VPCCidr, 4, 8 ]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: 'Name'
+          Value: 'PrivateSubnetTwo'
+  PrivateSubnetThree:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 2
+          - Fn::GetAZs: {Ref: 'AWS::Region'}
+      VpcId: !Ref 'VPC'
+      CidrBlock: !Select [ 3, !Cidr [ !Ref VPCCidr, 4, 8 ]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: 'Name'
+          Value: 'PrivateSubnetThree'
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Condition: CreatePublicSubnet
+  GatewayAttachement:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Condition: CreatePublicSubnet
+    Properties:
+      VpcId: !Ref 'VPC'
+      InternetGatewayId: !Ref 'InternetGateway'
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Condition: CreatePublicSubnet
+    Properties:
+      VpcId: !Ref 'VPC'
+      Tags:
+        - Key: 'Name'
+          Value: 'PublicRouteTable'
+  PublicRoute:
+    Type: AWS::EC2::Route
+    Condition: CreatePublicSubnet
+    DependsOn: GatewayAttachement
+    Properties:
+      RouteTableId: !Ref 'PublicRouteTable'
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref 'InternetGateway'
+
+  PublicSubnetOneRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreatePublicSubnet
+    Properties:
+      SubnetId: !Ref PublicSubnetOne
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref 'VPC'
+      Tags:
+        - Key: 'Name'
+          Value: 'PrivateRouteTable'
+
+  PrivateSubnetOneRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetOne
+  PrivateSubnetTwoRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetTwo
+  PrivateSubnetThreeRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetThree
+  S3GatewayEndpoint:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Condition: CreateS3Endpoint
+    Properties:
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      VpcId: !Ref VPC
+      VpcEndpointType: Gateway
+  STSEndpoint:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Condition: CreateSTSEndpoint
+    Properties:
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.sts'
+      VpcId: !Ref VPC
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+        - !Ref STSSecurityGroup
+      SubnetIds:
+        - !Ref PrivateSubnetOne
+        - !Ref PrivateSubnetTwo
+        - !Ref PrivateSubnetThree
+  STSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreateSTSEndpoint
+    Properties:
+      GroupDescription: Security Group for STS VPC Endpoint
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref VPCCidr
+  KeySpacesEndpoint:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Condition: CreateKeySpacesEndpoint
+    Properties:
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.cassandra'
+      VpcId: !Ref VPC
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+        - !Ref KeySpacesSecurityGroup
+      SubnetIds:
+        - !Ref PrivateSubnetOne
+        - !Ref PrivateSubnetTwo
+        - !Ref PrivateSubnetThree
+  KeySpacesSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreateKeySpacesEndpoint
+    Properties:
+      GroupDescription: Security Group for KeySpaces VPC Endpoint
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 9142
+          ToPort: 9142
+          CidrIp: !Ref PeerVPCCidr
+        - IpProtocol: tcp
+          FromPort: 9142
+          ToPort: 9142
+          CidrIp: !Ref VPCCidr
+Outputs:
+  VPCId:
+    Description: The ID of the VPC created
+    Value: !Ref 'VPC'
+    Export:
+      Name: !Sub "${AWS::StackName}-${VPCName}-VPCID"
+  PublicSubnetOne:
+    Condition: CreatePublicSubnet
+    Description: The name of the public subnet created
+    Value: !Ref 'PublicSubnetOne'
+    Export:
+      Name: !Sub "${AWS::StackName}-${VPCName}-PublicSubnetOne"
+  PrivateSubnetOne:
+    Description: The ID of private subnet one created
+    Value: !Ref 'PrivateSubnetOne'
+    Export:
+      Name: !Sub "${AWS::StackName}-${VPCName}-PrivateSubnetOne"
+  PrivateSubnetTwo:
+    Description: The ID of private subnet two created
+    Value: !Ref 'PrivateSubnetTwo'
+    Export:
+      Name: !Sub "${AWS::StackName}-${VPCName}-PrivateSubnetTwo"
+  PrivateSubnetThree:
+    Description: The ID of private subnet three created
+    Value: !Ref 'PrivateSubnetThree'
+    Export:
+      Name: !Sub "${AWS::StackName}-${VPCName}-PrivateSubnetThree"
+  VPCStackName:
+    Description: The name of the VPC Stack
+    Value: !Ref 'AWS::StackName'
+    Export:
+      Name: !Sub "${VPCName}-VPCStackName"
+  PrivateRouteTableId:
+    Description: The ID of the private route table
+    Value: !GetAtt 'PrivateRouteTable.RouteTableId'
+  PublicRouteTableId:
+    Condition: CreatePublicSubnet
+    Description: The ID of the public route table
+    Value: !GetAtt 'PublicRouteTable.RouteTableId'
+  KeySpacesEndpointDns:
+    Condition: CreateKeySpacesEndpoint
+    Description: The DNS of the KeySpaces VPC Endpoint
+    Value: !Join
+      - ','
+      - !GetAtt 'KeySpacesEndpoint.DnsEntries'
+
+
+
