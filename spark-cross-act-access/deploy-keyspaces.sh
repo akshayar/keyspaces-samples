@@ -23,7 +23,11 @@ aws cloudformation deploy --template-file cloudformation/keyspaces-act-resources
   --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
   --stack-name keyspaces-cluster  \
   --parameter-overrides \
-  VPCCidr=172.16.0.0/16 \
+  VPCCidr=10.0.0.0/16 \
   VPCStackTemplateUrl=https://${ARTIFACT_BUCKET}.s3.amazonaws.com/cloudformation/vpc-creation-with-private-subnet.yml \
   KeyspaceName=testkey \
-  PeerVPCCidr=10.4.0.0/16
+  PeerVPCCidr=172.16.0.0/16 \
+  PeerAccountId=<SPARK_ACCOUNT>
+
+aws cloudformation describe-stacks --stack-name keyspaces-cluster --query 'Stacks[0].Outputs[].[OutputKey,OutputValue]' --output text
+

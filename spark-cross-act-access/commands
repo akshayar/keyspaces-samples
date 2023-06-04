@@ -1,4 +1,4 @@
-aws ec2 create-vpc-peering-connection --vpc-id vpc-0cb9f6c07ea1359ce --peer-vpc-id vpc-08c58362f34d1f219 --peer-owner-id 967781231549
+aws ec2 create-vpc-peering-connection --vpc-id vpc-0cb9f6c07ea1359ce --peer-vpc-id vpc-08c58362f34d1f219 --peer-owner-id <KEYSPACES_ACCOUNT>
 
 
 aws ec2 describe-vpc-peering-connections --filters Name=accepter-vpc-info.vpc-id,Values=vpc-08c58362f34d1f219
@@ -19,7 +19,7 @@ datastax-java-driver {
                 auth-provider = {
                    class = software.aws.mcs.auth.SigV4AuthProvider
                    aws-region = ap-south-1
-                   aws-role-arn = "arn:aws:iam::967781231549:role/keyspaces-cluster-KeySpacesAccountRole-1L8EJCK54M1BU"
+                   aws-role-arn = "arn:aws:iam::<KEYSPACES_ACCOUNT>:role/keyspaces-cluster-KeySpacesAccountRole-1L8EJCK54M1BU"
                  }
             ssl-engine-factory {
                 class = DefaultSslEngineFactory
@@ -73,7 +73,7 @@ datastax-java-driver {
                 auth-provider = {
                    class = software.aws.mcs.auth.SigV4AuthProvider
                    aws-region = ap-south-1
-                   aws-role-arn = "arn:aws:iam::967781231549:role/keyspaces-cluster-KeySpacesAccountRole-1L8EJCK54M1BU"
+                   aws-role-arn = "arn:aws:iam::<KEYSPACES_ACCOUNT>:role/keyspaces-cluster-KeySpacesAccountRole-1L8EJCK54M1BU"
                  }
             ssl-engine-factory {
                 class = DefaultSslEngineFactory

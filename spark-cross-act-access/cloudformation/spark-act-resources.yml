@@ -3,12 +3,6 @@ Description: Create resoureces in spark account
 Parameters:
   VPCCidr:
     Default: 10.2.0.0/16
-    AllowedValues:
-      - 10.0.0.0/16
-      - 10.1.0.0/16
-      - 10.2.0.0/16
-      - 10.3.0.0/16
-      - 10.4.0.0/16
     Type: String
     Description: Cidr block of the VPC to be created
   VPCStackTemplateUrl:
@@ -17,10 +11,25 @@ Parameters:
   keySpacesCrossAccountRoleArn:
     Type: String
     Description: The ARN of the role in the keyspaces account
-  emrReleaseLabel:
-    Default: emr-6.10.0
+  peerVpcId:
     Type: String
-    Description: The EMR release label
+    Description: The VPC id of the keyspaces VPC endpoint
+    Default: NONE
+  peerAccountId:
+    Type: String
+    Description: The account id of the keyspaces account
+    Default: NONE
+  peerVPCCidr:
+    Type: String
+    Description: Cidr block of the VPC to be peered
+    Default: NONE
+  peeringAcceptorRoleArn:
+    Type: String
+    Description: The ARN of the role in the keyspaces account
+    Default: NONE
+Conditions:
+  CreatePeeringConnection: !Not [!Equals [!Ref peerVpcId, 'NONE']]
+
 Resources:
   VPC:
     Type: AWS::CloudFormation::Stack
@@ -117,6 +126,34 @@ Resources:
       Path: /
       Roles:
         - !Ref emrIamRole
+  vpcPeeringConnection:
+    Type: 'AWS::EC2::VPCPeeringConnection'
+    Condition: CreatePeeringConnection
+    DependsOn: VPC
+    Properties:
+      VpcId: !GetAtt VPC.Outputs.VPCId
+      PeerVpcId: !Ref peerVpcId
+      PeerOwnerId: !Ref peerAccountId
+      PeerRoleArn: !Ref peeringAcceptorRoleArn
+      Tags:
+        - Key: Name
+          Value: spark-keyspaces-peering-connection
+  peerPublicRoute:
+    Type: AWS::EC2::Route
+    Condition: CreatePeeringConnection
+    DependsOn: vpcPeeringConnection
+    Properties:
+      RouteTableId: !GetAtt VPC.Outputs.PublicRouteTableId
+      DestinationCidrBlock: !Ref peerVPCCidr
+      VpcPeeringConnectionId: !Ref vpcPeeringConnection
+  peerPrivateRoute:
+    Type: AWS::EC2::Route
+    Condition: CreatePeeringConnection
+    DependsOn: vpcPeeringConnection
+    Properties:
+      RouteTableId: !GetAtt VPC.Outputs.PrivateRouteTableId
+      DestinationCidrBlock: !Ref peerVPCCidr
+      VpcPeeringConnectionId: !Ref vpcPeeringConnection
 Outputs:
   cloud9Instance:
     Description: The cloud9 instance
@@ -124,24 +161,21 @@ Outputs:
   emrIamRoleName:
     Description: The EMR IAM role
     Value: !Ref emrIamRole
-  emrInstanceProfileName:
-    Description: The EMR instance profile
-    Value: !Ref emrInstanceProfile
   emrIamRoleArn:
     Description: The EMR IAM role ARN
     Value: !GetAtt emrIamRole.Arn
-  VPCId:
+  emrInstanceProfileName:
+    Description: The EMR instance profile
+    Value: !Ref emrInstanceProfile
+  sparkActVPCId:
     Description: The VPC Id
     Value: !GetAtt VPC.Outputs.VPCId
-  PrivateRouteTableId:
-    Description: The private route table Id
-    Value: !GetAtt VPC.Outputs.PrivateRouteTableId
-  PublicRouteTableId:
-    Description: The public route table Id
-    Value: !GetAtt VPC.Outputs.PublicRouteTableId
-  PrivateSubnetOne:
+  sparkActPrivateSubnetOne:
     Description: The private subnet one
     Value: !GetAtt VPC.Outputs.PrivateSubnetOne
+  peeringConnectionId:
+    Description: The peering connection Id
+    Value: !Ref vpcPeeringConnection
 
 
 

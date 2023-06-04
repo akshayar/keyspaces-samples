@@ -24,5 +24,12 @@ aws cloudformation deploy --template-file cloudformation/spark-act-resources.yml
   --parameter-overrides \
   VPCCidr=172.16.0.0/16 \
   VPCStackTemplateUrl=https://${ARTIFACT_BUCKET}.s3.amazonaws.com/cloudformation/vpc-creation-with-private-subnet.yml \
-  keySpacesCrossAccountRoleArn=arn:aws:iam::967781231549:role/keyspaces-cluster-KeySpacesAccountRole-1F25YC7O0V3IX \
-  emrReleaseLabel=emr-6.10.0
+  keySpacesCrossAccountRoleArn=arn:aws:iam::<KEYSPACES_ACCOUNT>:role/keyspaces-cluster-KeySpacesAccountRole-8FP7DV7LMQJ \
+  peerVpcId=vpc-0f055f1578e22a2fe \
+  peerAccountId=<KEYSPACES_ACCOUNT> \
+  peerVPCCidr=10.0.0.0/16 \
+  peeringAcceptorRoleArn=arn:aws:iam::<KEYSPACES_ACCOUNT>:role/keyspaces-cluster-vpcPeeringAcceptorRole-1UUEJIDAMEMIF
+
+aws cloudformation describe-stacks --stack-name spark-cluster --query 'Stacks[0].Outputs[].[OutputKey,OutputValue]' --output text
+
+

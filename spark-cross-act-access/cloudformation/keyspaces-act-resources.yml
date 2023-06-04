@@ -9,6 +9,10 @@ Parameters:
     Default: NONE
     Type: String
     Description: Cidr block of the VPC to be peered
+  PeerAccountId:
+    Type: String
+    Description: The account id of the requester
+    Default: NONE
   VPCStackTemplateUrl:
     Type: String
     Description: The S3 URL of the VPC stack template
@@ -16,6 +20,10 @@ Parameters:
     Default: "catalog"
     Type: String
     Description: Name of the Keyspace to be created
+
+Conditions:
+  CreatePeeringAcceptorRole: !Not [!Equals [!Ref PeerAccountId, 'NONE']]
+
 
 Resources:
   VPC:
@@ -66,29 +74,58 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonKeyspacesFullAccess
         - !Ref KeySpacesEndPointPermissionPolicy
+  vpcPeeringAcceptorRole:
+    Type: 'AWS::IAM::Role'
+    Condition: CreatePeeringAcceptorRole
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Principal:
+              AWS: !Ref PeerAccountId
+            Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+      Path: /
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: 'ec2:AcceptVpcPeeringConnection'
+                Resource: '*'
 Outputs:
-  MyNewKeyspace:
+  keySpaceName:
     Description: The name of the Keyspace
     Value: !Ref MyNewKeyspace
     Export:
       Name: !Sub "${AWS::StackName}-MyNewKeyspace"
-  KeySpacesAccountRoleName:
+  keySpacesAccountRoleName:
     Description: The Name of the role in the keyspaces account
     Value: !Ref KeySpacesAccountRole
-  KeySpacesAccountRoleArn:
+  keySpacesAccountRoleArn:
     Description: The ARN of the role in the keyspaces account
     Value: !GetAtt KeySpacesAccountRole.Arn
     Export:
       Name: !Sub "${AWS::StackName}-KeySpacesAccountRole"
-  createPeeringConnectionCommand:
-    Description: The schema creation command
-    Value: !Sub "aws ec2 create-vpc-peering-connection --vpc-id SPARK_VPC_ID --peer-vpc-id ${VPC.Outputs.VPCId} --peer-owner-id ${AWS::AccountId}"
-  describePeeringConnectionCommand:
-    Description: The schema creation command
-    Value: !Sub "aws ec2 describe-vpc-peering-connections --filters Name=accepter-vpc-info.vpc-id,Values=${VPC.Outputs.VPCId}"
-  PrivateRouteTableId:
+  keyspacesVpcId:
+    Description: The VPC id
+    Value: !GetAtt VPC.Outputs.VPCId
+  keyspacesActPrivateRouteTableId:
     Description: The private route table id
     Value: !GetAtt VPC.Outputs.PrivateRouteTableId
-  KeySpacesEndpointDns:
+  keySpacesEndpointDns:
     Description: The Keyspaces endpoint DNS
     Value: !GetAtt VPC.Outputs.KeySpacesEndpointDns
+  vpcPeeringAcceptorRoleArn:
+    Description: The ARN of VPC peering acceptor role in the keyspaces account
+    Value: !GetAtt vpcPeeringAcceptorRole.Arn
+    Condition: CreatePeeringAcceptorRole
+    Export:
+      Name: !Sub "${AWS::StackName}-vpcPeeringAcceptorRole"
+#  createPeeringConnectionCommand:
+#    Description: The schema creation command
+#    Value: !Sub "aws ec2 create-vpc-peering-connection --vpc-id SPARK_VPC_ID --peer-vpc-id ${VPC.Outputs.VPCId} --peer-owner-id ${AWS::AccountId}"
+#  describePeeringConnectionCommand:
+#    Description: The schema creation command
+#    Value: !Sub "aws ec2 describe-vpc-peering-connections --filters Name=accepter-vpc-info.vpc-id,Values=${VPC.Outputs.VPCId}"

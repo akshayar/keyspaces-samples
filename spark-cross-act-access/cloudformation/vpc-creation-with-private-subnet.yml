@@ -188,6 +188,7 @@ Resources:
           FromPort: 443
           ToPort: 443
           CidrIp: !Ref VPCCidr
+          Description: Allow access from local VPC
   KeySpacesEndpoint:
     Type: 'AWS::EC2::VPCEndpoint'
     Condition: CreateKeySpacesEndpoint
@@ -213,10 +214,12 @@ Resources:
           FromPort: 9142
           ToPort: 9142
           CidrIp: !Ref PeerVPCCidr
+          Description: Allow access from peered VPC
         - IpProtocol: tcp
           FromPort: 9142
           ToPort: 9142
           CidrIp: !Ref VPCCidr
+          Description: Allow access from local VPC
 Outputs:
   VPCId:
     Description: The ID of the VPC created
